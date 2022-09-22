@@ -206,7 +206,7 @@ class BertClassifier(tf.keras.Model):
         return x
 
 model = BertClassifier(num_classes=1)
-optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3, clipnorm=1)
+optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4, clipnorm=1)
 loss = tf.keras.losses.BinaryCrossentropy(from_logits=True)
 metrics = [
     tfa.metrics.F1Score(num_classes=1), 
@@ -235,11 +235,17 @@ model.compile(
 # dataset a bit. Though, it is also possible that the class_weights are too aggressive and 
 # making training too difficult by skewing the gradients too much. Another point of experimentation.
 
+# history = model.fit(
+#     train_ds,
+#     validation_data=val_ds, 
+#     epochs=3, 
+#     class_weight=get_class_weights(reviews[LABEL_COL])
+# )
+
 history = model.fit(
     train_ds,
     validation_data=val_ds, 
-    epochs=3, 
-    class_weight=get_class_weights(reviews[LABEL_COL])
+    epochs=3,
 )
 
 #Although, it is a short history, in general, the model is improving and has not really reached
