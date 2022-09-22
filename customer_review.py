@@ -68,11 +68,15 @@ def get_class_weights(labels: pd.Series) -> dict:
     class_weights = dict(1/(labels.value_counts()/len(labels)))
     return class_weights
 
-def make_predictions(model: tf.keras.Model, dataset: tf.data.Dataset) -> np.ndarray:
+def make_predictions(
+    model: tf.keras.Model, 
+    dataset: tf.data.Dataset, 
+    threshold: float = 0.5
+) -> np.ndarray:
     '''Returns prediction labels for a model and dataset'''
     model_preds = model.predict(dataset)
     sig_preds= tf.sigmoid(model_preds)
-    pred_labels = tf.map_fn(lambda x: 1 if x > 0.5 else 0, sig_preds)
+    pred_labels = tf.map_fn(lambda x: 1 if x > threshold else 0, sig_preds)
     return pred_labels
 
 def print_metrics(true_labels: np.ndarray, pred_labels: np.ndarray) -> None:
@@ -228,7 +232,8 @@ model.compile(
 #the gradients to flow through the pre-trained BERT model and adjust those weights a bit, but
 #trying to train BERT was too much for my computer. I also adjust the training to weight the
 # 1-class more by their prevalence in the whole dataset to help the training of the imbalanced
-# dataset a bit.
+# dataset a bit. Though, it is also possible that the class_weights are too aggressive and 
+# making training too difficult by skewing the gradients too much. Another point of experimentation.
 
 history = model.fit(
     train_ds,
@@ -246,7 +251,11 @@ print(history.history)
 #Let us make some predictions on the test set and take a look at a few metrics and the 
 #confusion matrix
 
-pred_labels = make_predictions(model, val_ds)
+pred_labels = make_predictions(model, val_ds, threshold = 0.4)
+#Would be nice to calibrate the threshold to business requirements. I try 
+#slightly less than 0.5 to favour classifying the negative reviews, but
+#in a real case you would probably want it to be more aggressive than that
+#depending on the model. 
 true_labels = test[LABEL_COL].to_numpy()
 print_metrics(true_labels, pred_labels)
 
