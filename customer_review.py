@@ -1,6 +1,7 @@
 #%%
 #Import libraries
 
+import nltk
 import numpy as np
 import os
 import pandas as pd
@@ -11,6 +12,7 @@ import tensorflow_hub as hub
 import tensorflow_text as text
 
 from matplotlib import pyplot as plt
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
 from sklearn.metrics import (
     confusion_matrix, 
     ConfusionMatrixDisplay,
@@ -193,7 +195,7 @@ class BertClassifier(tf.keras.Model):
         return x
 
 model = BertClassifier(num_classes=1)
-optimizer = tf.keras.optimizers.Adam(learning_rate=5e-4, clipnorm=1)
+optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3, clipnorm=1)
 loss = tf.keras.losses.BinaryCrossentropy(from_logits=True)
 metrics = [
     tfa.metrics.F1Score(num_classes=1), 
@@ -228,6 +230,9 @@ history = model.fit(
     class_weight=get_class_weights(reviews.label)
 )
 
+#Although, it is a short history, in general, the model is improving and has not really reached
+#a plateau, which means that it could simply benefit from more training without increasing the 
+#complexity to see improvements in performance. 
 print(history.history)
 
 #%%
@@ -240,6 +245,31 @@ print_metrics(true_labels, pred_labels)
 
 #%%
 cm_fig = plot_confusion_matrix(true_labels, pred_labels)
+
+#%%
+
+#For baseline comparison here is a pre-trained sentiment analyzer from NLTK:
+
+class SentimentAnalyzer():
+    def __init__(self):
+        nltk.download('vader_lexicon')
+        self.analyzer = SentimentIntensityAnalyzer()
+    def predict(self, x):
+        labels = []
+        for text in x:
+            score = self.analyzer.polarity_scores(text)["compound"]
+            #Note giving inverted classes to match the customer review data where 1 is negative
+            if score < 0.5:
+                labels.append(1)
+            else:
+                labels.append(0)
+        return labels
+
+analyzer = SentimentAnalyzer()
+reviews["nltk_labels"] = analyzer.predict(reviews["review"])
+
+print_metrics(reviews["label"], reviews["nltk_labels"])
+nltk_cm = plot_confusion_matrix(reviews["label"], reviews["nltk_labels"])
 
 #%%
 
