@@ -1,5 +1,5 @@
 #%%
-#Import libraries
+## LIBRARY IMPORTS
 
 import nltk
 import numpy as np
@@ -23,17 +23,22 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import train_test_split
 
+#Literals and housekeeping
+
 os.chdir(os.path.realpath(os.path.dirname(__file__)))
 tf.get_logger().setLevel('ERROR')
 AUTOTUNE = tf.data.AUTOTUNE
 TFHUB_PREPROCESSOR = 'https://tfhub.dev/tensorflow/bert_en_uncased_preprocess/3'
 TFHUB_ENCODER = 'https://tfhub.dev/tensorflow/bert_en_uncased_L-12_H-768_A-12/3'
+
+DATA_COL = "review"
+LABEL_COL = "label"
 #%%
 
 # FUNCTIONS / UTILS
 
 def clean_text(text: str) -> str:
-    '''Basic text cleaning for links, newlins and special characters'''
+    '''Basic text cleaning for links, newlines and special characters'''
     www = r'www[A-Za-z0-9./]+'
     https = r"https?://[A-Za-z0-9./]+"
     newline = r'\n'
@@ -43,14 +48,15 @@ def clean_text(text: str) -> str:
     return text
 
 
-def binary_encode_label(label: int) -> tf.Tensor:
-    if label == 0:
-        return tf.constant([1, 0])
-    else:
-        return tf.constant([0, 1])
-
-def build_tf_ds(dataframe: pd.DataFrame, batch_size: int = 32, is_training: bool = True) -> tf.data.Dataset:
-    ds = (dataframe.review.to_numpy(), dataframe.label.to_numpy())
+def build_tf_ds(
+    dataframe: pd.DataFrame, 
+    batch_size: int = 32, 
+    is_training: bool = True,
+    data_col: str = DATA_COL,
+    label_col: str = LABEL_COL
+) -> tf.data.Dataset:
+    '''Prepares a dataframe of training data for TF'''
+    ds = (dataframe[data_col].to_numpy(), dataframe[label_col].to_numpy())
     ds = tf.data.Dataset.from_tensor_slices(ds)
     ds = ds.map(lambda review, label: (review, label))
     if is_training:
@@ -63,6 +69,7 @@ def get_class_weights(labels: pd.Series) -> dict:
     return class_weights
 
 def make_predictions(model: tf.keras.Model, dataset: tf.data.Dataset) -> np.ndarray:
+    '''Returns prediction labels for a model and dataset'''
     model_preds = model.predict(dataset)
     sig_preds= tf.sigmoid(model_preds)
     pred_labels = tf.map_fn(lambda x: 1 if x > 0.5 else 0, sig_preds)
@@ -103,26 +110,26 @@ def plot_confusion_matrix(
 reviews = pd.read_csv("review_data.csv")
 reviews.count()
 reviews.dropna(inplace=True)
-reviews["review"] = reviews["review"].apply(clean_text)
+reviews[DATA_COL] = reviews[DATA_COL].apply(clean_text)
 
 #Notice there is a large class imbalance. We mostly get positive reviews with just the 87
 #negative reviews. This will be important later. 
-reviews["label"].hist()
-reviews["label"].value_counts()
+reviews[LABEL_COL].hist()
+reviews[LABEL_COL].value_counts()
 
 #%%
 
 #Here I took a quick exploration of review length to see if there is anything interesting.
 #I make a quick and dirty split into tokens and note that most reviews are shorter, although
 #there are a couple lengthy positive reviews, but overall nothing too substantial to work with.
-reviews["review_length"] = reviews["review"].apply(lambda x: len(str(x).split()))
+reviews["review_length"] = reviews[DATA_COL].apply(lambda x: len(str(x).split()))
 
 fig, axes = plt.subplots(2, 2, figsize=(12, 12))
 
 reviews["review_length"].hist(ax=axes[0][0])
-reviews.plot(kind="scatter", x="label", y="review_length", ax=axes[0][1])
-reviews[reviews["label"]==0]["review_length"].hist(ax=axes[1][0])
-reviews[reviews["label"]==1]["review_length"].hist(ax=axes[1][1])
+reviews.plot(kind="scatter", x=LABEL_COL, y="review_length", ax=axes[0][1])
+reviews[reviews[LABEL_COL]==0]["review_length"].hist(ax=axes[1][0])
+reviews[reviews[LABEL_COL]==1]["review_length"].hist(ax=axes[1][1])
 
 titles = [
     "All Review Lengths",
@@ -145,7 +152,7 @@ reviews = reviews.drop("review_length", axis=1)
 train, test = train_test_split(
     reviews,
     test_size = 0.2,
-    stratify = reviews["label"]
+    stratify = reviews[LABEL_COL]
 )
 
 #Load the data into tensorflow Datasets.
@@ -227,7 +234,7 @@ history = model.fit(
     train_ds,
     validation_data=val_ds, 
     epochs=3, 
-    class_weight=get_class_weights(reviews.label)
+    class_weight=get_class_weights(reviews[LABEL_COL])
 )
 
 #Although, it is a short history, in general, the model is improving and has not really reached
@@ -240,7 +247,7 @@ print(history.history)
 #confusion matrix
 
 pred_labels = make_predictions(model, val_ds)
-true_labels = test["label"].to_numpy()
+true_labels = test[LABEL_COL].to_numpy()
 print_metrics(true_labels, pred_labels)
 
 #%%
@@ -266,10 +273,10 @@ class SentimentAnalyzer():
         return labels
 
 analyzer = SentimentAnalyzer()
-reviews["nltk_labels"] = analyzer.predict(reviews["review"])
+reviews["nltk_labels"] = analyzer.predict(reviews[DATA_COL])
 
-print_metrics(reviews["label"], reviews["nltk_labels"])
-nltk_cm = plot_confusion_matrix(reviews["label"], reviews["nltk_labels"])
+print_metrics(reviews[LABEL_COL], reviews["nltk_labels"])
+nltk_cm = plot_confusion_matrix(reviews[LABEL_COL], reviews["nltk_labels"])
 
 #%%
 
@@ -277,11 +284,11 @@ nltk_cm = plot_confusion_matrix(reviews["label"], reviews["nltk_labels"])
 
 # HOLDOUT_FILENAME = ""
 # holdout = pd.read_csv(HOLDOUT_FILENAME)
-# holdout["review"] = holdout["review"].apply(clean_text)
+# holdout[DATA_COL] = holdout[DATA_COL].apply(clean_text)
 # holdout_ds = build_tf_ds(holdout, is_training=False)
 
 # pred_labels = make_predictions(model, holdout_ds)
-# true_labels = holdout["label"].to_numpy()
+# true_labels = holdout[LABEL_COL].to_numpy()
 # print_metrics(true_labels, pred_labels)
 # #%%
 # cm_fig = plot_confusion_matrix(true_labels, pred_labels)
